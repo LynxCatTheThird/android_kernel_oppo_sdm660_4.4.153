@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     name: Build Kernel from OPPO R15x/K1
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
 
       - name: Get branch names.
@@ -28,7 +28,7 @@ jobs:
 
       - name: Get zyc-clang20 toolchain
         run: |
-          wget https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20241109-release/Clang-20.0.0git-20241109.tar.gz -O $GITHUB_WORKSPACE/workdir/zyc_clang20.tar.gz
+          wget https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20250129-release/Clang-20.0.0git-20250129.tar.gz -O $GITHUB_WORKSPACE/workdir/zyc_clang20.tar.gz
           mkdir $GITHUB_WORKSPACE/workdir/clang
           tar zxvf $GITHUB_WORKSPACE/workdir/zyc_clang20.tar.gz -C $GITHUB_WORKSPACE/workdir/clang
   
