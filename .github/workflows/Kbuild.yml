@@ -1,0 +1,85 @@
+name: Build Kernel for OPPO SDM660
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Kernel for ${{ matrix.device}} (${{ matrix.branch}})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        device: [16051, 17011, 18005]
+        branch: [master, ksu]
+
+    steps:
+      - name: Set SWAP to 5GiB
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 5
+
+      - name: Initialize Compilation Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git automake flex lzop bison gperf build-essential zip curl zlib1g-dev libbz2-dev squashfs-tools schedtool dpkg-dev liblz4-tool make ccache maven libssl-dev minicom bc libx11-dev xsltproc unzip device-tree-compiler python3
+          echo "BUILD_TIME=$(TZ=Asia/Shanghai date "+%Y%m%d%H%M")" >> $GITHUB_ENV
+
+      - name: Get Latest Clang Toolchain
+        run: |
+          CLANG_URL=$(curl -s https://raw.githubusercontent.com/ZyCromerZ/Clang/main/Clang-main-link.txt)
+          CLANG_FILENAME=$(basename $CLANG_URL)
+          wget $CLANG_URL -O $GITHUB_WORKSPACE/$CLANG_FILENAME
+          mkdir $GITHUB_WORKSPACE/clang
+          tar zxf $GITHUB_WORKSPACE/$CLANG_FILENAME -C $GITHUB_WORKSPACE/clang
+
+      - name: Get Kernel Source
+        run: |
+          git clone --recursive https://github.com/$GITHUB_REPOSITORY/ -b ${{ steps.branch-names.outputs.current_branch }} --depth 1 $GITHUB_WORKSPACE/workdir/source
+
+      - name: Build Kernel
+        run: |
+          export KBUILD_BUILD_HOST=Github-Action
+          export KBUILD_BUILD_USER=$(echo ${{ github.actor}})
+          export ARCH="arm64"
+          export SUBARCH="arm64"
+          export PATH="$GITHUB_WORKSPACE/clang/bin/:$PATH"
+          export CROSS_COMPILE="aarch64-linux-gnu-"
+          cd $GITHUB_WORKSPACE/source
+          export OPPO_TARGET_DEVICE="MSM_${{ matrix.device}}"
+          make O=out sdm660-perf_defconfig CC=clang
+          make -j$(nproc --all) O=out CC="ccache  clang"
+
+      - name: Check Kernel Output Files
+        run: |
+          cd $GITHUB_WORKSPACE/source
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+              echo "CHECK_FILE_IS_OK=true" >> $GITHUB_ENV
+          else
+              echo "Kernel output file is empty"
+              exit 1
+          fi
+
+      - name: Upload Kernel Artifact
+        if: env.CHECK_FILE_IS_OK == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android_kernel_oppo_sdm660_${{ matrix.device}}_${{ matrix.branch}}_${{ env.BUILD_TIME}}
+          path: source/out/arch/arm64/boot/Image.gz-dtb
+
+      - name: Make AnyKernel3 Package
+        if: env.CHECK_FILE_IS_OK == 'true'
+        run: |
+          git clone https://github.com/$GITHUB_REPOSITORY/ -b prebuilt_ak3 --depth 1 $GITHUB_WORKSPACE/workdir/ak3
+          rm -r $GITHUB_WORKSPACE/ak3/.git
+          cp $GITHUB_WORKSPACE/source/out/arch/arm64/boot/Image.gz-dtb $GITHUB_WORKSPACE/ak3
+          ZIP_NAME="AnyKernel3_oppo_sdm660_${{ matrix.device}}_${{ matrix.branch}}_${{ env.BUILD_TIME}}"
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Upload AnyKernel3 Artifact
+        if: env.CHECK_FILE_IS_OK == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME}}
+          path: ak3/*
